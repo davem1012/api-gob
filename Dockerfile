@@ -25,7 +25,7 @@ RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/memory.ini \
 RUN a2enmod rewrite
 
 # Configurar Apache para Slim
-RUN echo '<VirtualHost *:80>\n\
+RUN echo '<VirtualHost *:8081>\n\
     DocumentRoot /var/www/html/public\n\
     <Directory /var/www/html/public>\n\
         AllowOverride All\n\
@@ -36,10 +36,6 @@ RUN echo '<VirtualHost *:80>\n\
 # Copiar código (incluyendo vendor)
 COPY . /var/www/html/
 
-# Crear directorios necesarios y establecer permisos
-RUN mkdir -p /var/www/html/logs /var/www/html/var/cache /var/www/html/var/log \
-    && chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html/logs /var/www/html/var
 
 EXPOSE 8081
 
