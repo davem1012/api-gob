@@ -22,21 +22,24 @@ class SunatController
         $authHeader = $request->getHeaderLine('Authorization');
         $token = trim(str_replace('Bearer', '', $authHeader));
 
-        /* if (empty($token) || $token !== $_ENV['AUTH_TOKEN']) {
+        if (empty($token) || $token !== $_ENV['AUTH_TOKEN']) {
             return $this->json($response, [
                 'success' => false,
                 'message' => 'No se encuentra autenticado'
             ], 401);
-        } */
+        }
 
         // 2. Revisar cache
         $record = RucCache::where('numero_documento', $ruc)->first();
         $ttlDays = intval($_ENV['CACHE_TTL_DAYS'] ?? 1); // 1 día por defecto
-        $daysDiff = floor((time() - strtotime($record->fecha_registro)) / 86400);
-        
-        if ($record && $record->fecha_registro && $daysDiff < $ttlDays) {
-            // Construir respuesta desde cache
-            return $this->json($response, $this->buildSuccessResponse($record->toArray()));
+
+
+        if ($record && $record->fecha_registro) {
+            $daysDiff = floor((time() - strtotime($record->fecha_registro)) / 86400);
+            if ($daysDiff < $ttlDays) {
+                // Construir respuesta desde cache
+                return $this->json($response, $this->buildSuccessResponse($record->toArray()));
+            }
         }
 
         // 3. Consultar API intermedia
