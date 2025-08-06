@@ -30,7 +30,7 @@ COPY . .
 #RUN chown -R unit:unit storage bootstrap/cache && chmod -R 775 storage bootstrap/cache
 
 #RUN composer install --optimize-autoloader --no-dev
-RUN composer install --prefer-dist --optimize-autoloader --no-interaction
+#RUN composer install --prefer-dist --optimize-autoloader --no-interaction
 
 #RUN npm install && npm run build
 
