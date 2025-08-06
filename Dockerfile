@@ -34,8 +34,6 @@ RUN composer install --prefer-dist --optimize-autoloader --no-interaction
 
 #RUN npm install && npm run build
 
-COPY unit.json /docker-entrypoint.d/unit.json
-
 EXPOSE 8001
 
 CMD ["unitd", "--no-daemon"]
