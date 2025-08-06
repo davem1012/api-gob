@@ -1,39 +1,46 @@
-FROM unit:php8.4
+FROM php:8.4-apache
 
-RUN apt update && apt install -y \
-    curl unzip git libicu-dev libzip-dev libpng-dev libjpeg-dev libfreetype6-dev libssl-dev libpq-dev \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt install -y nodejs \
+# Instalar dependencias del sistema y extensiones PHP
+RUN apt-get update && apt-get install -y \
+    curl unzip git libicu-dev libzip-dev libpng-dev libjpeg-dev \
+    libfreetype6-dev libssl-dev libpq-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) pcntl opcache pdo pdo_mysql intl zip gd exif ftp bcmath \
+    && docker-php-ext-install -j$(nproc) pcntl opcache pdo pdo_mysql intl zip gd exif bcmath \
     && pecl install redis \
-    && docker-php-ext-enable redis
+    && docker-php-ext-enable redis \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN echo "opcache.enable=1" > /usr/local/etc/php/conf.d/custom.ini \
-    && echo "opcache.jit=tracing" >> /usr/local/etc/php/conf.d/custom.ini \
-    && echo "opcache.jit_buffer_size=256M" >> /usr/local/etc/php/conf.d/custom.ini \
-    && echo "memory_limit=512M" > /usr/local/etc/php/conf.d/custom.ini \        
-    && echo "upload_max_filesize=256M" >> /usr/local/etc/php/conf.d/custom.ini \
-    && echo "post_max_size=256M" >> /usr/local/etc/php/conf.d/custom.ini
+# Configurar PHP
+RUN echo "opcache.enable=1" > /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.jit=tracing" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.jit_buffer_size=256M" >> /usr/local/etc/php/conf.d/opcache.ini
 
-COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
+RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/memory.ini \        
+    && echo "upload_max_filesize=256M" >> /usr/local/etc/php/conf.d/memory.ini \
+    && echo "post_max_size=256M" >> /usr/local/etc/php/conf.d/memory.ini \
+    && echo "max_execution_time=300" >> /usr/local/etc/php/conf.d/memory.ini
 
-WORKDIR /var/www/html
-# Define el volumen después de establecer el WORKDIR
-VOLUME /var/www/html
-COPY . .
+# Habilitar mod_rewrite para Slim
+RUN a2enmod rewrite
 
-#RUN chown -R unit:unit /var/www/html/storage /var/www/html/bootstrap/cache \
-#    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+# Configurar Apache para Slim
+RUN echo '<VirtualHost *:80>\n\
+    DocumentRoot /var/www/html/public\n\
+    <Directory /var/www/html/public>\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
+# Copiar código (incluyendo vendor)
+COPY . /var/www/html/
 
-#RUN chown -R unit:unit storage bootstrap/cache && chmod -R 775 storage bootstrap/cache
+# Crear directorios necesarios y establecer permisos
+RUN mkdir -p /var/www/html/logs /var/www/html/var/cache /var/www/html/var/log \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/logs /var/www/html/var
 
-#RUN composer install --optimize-autoloader --no-dev
-#RUN composer install --prefer-dist --optimize-autoloader --no-interaction
+EXPOSE 8081
 
-#RUN npm install && npm run build
-
-EXPOSE 8001
-
-CMD ["unitd", "--no-daemon"]
+CMD ["apache2-foreground"]
