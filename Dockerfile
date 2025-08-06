@@ -1,4 +1,4 @@
-FROM php:8.4-apache
+FROM unit:php8.4
 
 # Instalar dependencias del sistema y extensiones PHP
 RUN apt-get update && apt-get install -y \
@@ -21,22 +21,32 @@ RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/memory.ini \
     && echo "post_max_size=256M" >> /usr/local/etc/php/conf.d/memory.ini \
     && echo "max_execution_time=300" >> /usr/local/etc/php/conf.d/memory.ini
 
-# Habilitar mod_rewrite para Slim
-RUN a2enmod rewrite
-
-# Configurar Apache para Slim
-RUN echo '<VirtualHost *:8081>\n\
-    DocumentRoot /var/www/html/public\n\
-    <Directory /var/www/html/public>\n\
-        AllowOverride All\n\
-        Require all granted\n\
-    </Directory>\n\
-</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
-
 # Copiar código (incluyendo vendor)
 COPY . /var/www/html/
 
+WORKDIR /var/www/html
+
+# Crear directorios necesarios y establecer permisos
+RUN mkdir -p logs var/cache var/log \
+    && chown -R unit:unit . \
+    && chmod -R 755 logs var
+
+# Configuración de Unit para Slim
+RUN echo '{\
+    "listeners": {\
+        "*:8081": {\
+            "pass": "applications/slim_app"\
+        }\
+    },\
+    "applications": {\
+        "slim_app": {\
+            "type": "php",\
+            "root": "/var/www/html/public",\
+            "script": "index.php"\
+        }\
+    }\
+}' > /docker-entrypoint.d/config.json
 
 EXPOSE 8081
 
-CMD ["apache2-foreground"]
+CMD ["unitd", "--no-daemon"]
