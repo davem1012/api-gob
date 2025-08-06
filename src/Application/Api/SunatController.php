@@ -114,7 +114,7 @@ class SunatController
         // Construir ubigeo array
         $ubigeo = $data['ubigeo'] ?? '';
         $ubigeoArray = [];
-        
+
         if (strlen($ubigeo) === 6) {
             $ubigeoArray = [
                 substr($ubigeo, 0, 2), // Departamento
@@ -150,7 +150,7 @@ class SunatController
 
     private function remoteQuery(string $ruc): array
     {
-        $url = rtrim($_ENV['EXTERNAL_API_URL'], '?') . '?numero=' . urlencode($ruc);
+        $url = rtrim($_ENV['EXTERNAL_API_URL'], '?') . '/v1/sunat/ruc/full?numero=' . urlencode($ruc);
         $apiKey = $_ENV['EXTERNAL_API_KEY'];
 
         $client = new Client([
@@ -164,7 +164,7 @@ class SunatController
         try {
             $response = $client->get($url);
             $statusCode = $response->getStatusCode();
-            
+
             $body = (string) $response->getBody();
             $data = json_decode($body, true);
 
@@ -184,7 +184,6 @@ class SunatController
             }
 
             return $data;
-
         } catch (RequestException $e) {
             // Verificar si es un error 422 específicamente
             if ($e->hasResponse() && $e->getResponse()->getStatusCode() === 422) {
@@ -193,7 +192,7 @@ class SunatController
                     'message' => 'ruc no valido'
                 ];
             }
-            
+
             return [
                 'error' => 'Error al consultar la API intermedia: ' . $e->getMessage()
             ];
