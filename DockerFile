@@ -20,7 +20,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
 
 WORKDIR /var/www/html
 # Define el volumen después de establecer el WORKDIR
-#VOLUME /var/www/html
+VOLUME /var/www/html
 COPY . .
 
 #RUN chown -R unit:unit /var/www/html/storage /var/www/html/bootstrap/cache \
