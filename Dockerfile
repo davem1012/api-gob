@@ -1,4 +1,4 @@
-FROM unit:php8.4
+FROM unit:php8.2
 
 # Instalar dependencias del sistema y extensiones PHP
 RUN apt-get update && apt-get install -y \
@@ -20,6 +20,11 @@ RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/memory.ini \
     && echo "upload_max_filesize=256M" >> /usr/local/etc/php/conf.d/memory.ini \
     && echo "post_max_size=256M" >> /usr/local/etc/php/conf.d/memory.ini \
     && echo "max_execution_time=300" >> /usr/local/etc/php/conf.d/memory.ini
+
+    # Configurar errores para producción
+RUN echo "display_errors=Off" > /usr/local/etc/php/conf.d/errors.ini \
+    && echo "log_errors=On" >> /usr/local/etc/php/conf.d/errors.ini \
+    && echo "error_log=/var/www/html/logs/php_errors.log" >> /usr/local/etc/php/conf.d/errors.ini
 
 # Copiar código (incluyendo vendor)
 COPY . /var/www/html/
