@@ -7,6 +7,7 @@ use Illuminate\Database\Capsule\Manager as DB;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\RucCache;
+use App\Models\ApiToken;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use phpDocumentor\Reflection\DocBlock\Tags\Var_;
@@ -31,21 +32,27 @@ class SunatController
 
         // 2. Revisar cache
         $record = RucCache::where('numero_documento', $ruc)->first();
-        $ttlDays = intval($_ENV['CACHE_TTL_DAYS'] ?? 1); // 1 día por defecto
+        $ttl = intval($_ENV['CACHE_TTL_SECONDS'] ?? 86400); // 1 día por defecto
 
-
-        if ($record && $record->fecha_registro) {
-            $daysDiff = floor((time() - strtotime($record->fecha_registro)) / 86400);
-            if ($daysDiff < $ttlDays) {
-                // Construir respuesta desde cache
-                return $this->json($response, $this->buildSuccessResponse($record->toArray()));
-            }
+        if ($record && $record->fecha_registro && (time() - strtotime($record->fecha_registro)) < $ttl) {
+            // Construir respuesta desde cache
+            return $this->json($response, $this->buildSuccessResponse($record->toArray()));
         }
 
-        // 3. Consultar API intermedia
-        $remoteResponse = $this->remoteQuery($ruc);
+        // 3. Obtener token disponible
+        $apiTokenRecord = ApiToken::getAvailableToken();
 
-        // 4. Verificar si hay error en la respuesta del API
+        if (!$apiTokenRecord) {
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'No hay tokens disponibles este mes'
+            ], 503);
+        }
+
+        // 4. Consultar API intermedia
+        $remoteResponse = $this->remoteQuery($ruc, $apiTokenRecord->token);
+
+        // 5. Verificar si hay error en la respuesta del API
         if (isset($remoteResponse['error']) || isset($remoteResponse['message'])) {
             return $this->json($response, [
                 'success' => false,
@@ -53,7 +60,10 @@ class SunatController
             ]);
         }
 
-        // 5. Guardar/actualizar cache
+        // 6. Incrementar contador del token usado
+        $apiTokenRecord->incrementCounter();
+
+        // 7. Guardar/actualizar cache
         if ($record) {
             // Actualizar registro existente
             $record->update([
@@ -109,7 +119,7 @@ class SunatController
             ]);
         }
 
-        // 6. Devolver respuesta formateada
+        // 8. Devolver respuesta formateada
         return $this->json($response, $this->buildSuccessResponse($remoteResponse));
     }
 
@@ -152,15 +162,14 @@ class SunatController
         return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
     }
 
-    private function remoteQuery(string $ruc): array
+    private function remoteQuery(string $ruc, string $apiToken): array
     {
-        $url = rtrim($_ENV['EXTERNAL_API_URL'], '?') . '/v1/sunat/ruc/full?numero=' . urlencode($ruc);
-        $apiKey = $_ENV['EXTERNAL_API_KEY'];
+        $url = rtrim($_ENV['EXTERNAL_API_URL'], '?') . '?numero=' . urlencode($ruc);
 
         $client = new Client([
             'timeout' => 10,
             'headers' => [
-                'Authorization' => 'Bearer ' . $apiKey,
+                'Authorization' => 'Bearer ' . $apiToken,
                 'Accept' => 'application/json',
             ]
         ]);
