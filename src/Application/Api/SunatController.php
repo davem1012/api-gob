@@ -164,7 +164,7 @@ class SunatController
 
     private function remoteQuery(string $ruc, string $apiToken): array
     {
-        $url = rtrim($_ENV['EXTERNAL_API_URL'], '?') . '?numero=' . urlencode($ruc);
+        $url = rtrim($_ENV['EXTERNAL_API_URL'], '?') . '/v1/sunat/ruc/full?numero=' . urlencode($ruc);
 
         $client = new Client([
             'timeout' => 10,
