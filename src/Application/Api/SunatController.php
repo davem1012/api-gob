@@ -32,7 +32,7 @@ class SunatController
 
         // 2. Revisar cache
         $record = RucCache::where('numero_documento', $ruc)->first();
-        $ttl = intval($_ENV['CACHE_TTL_SECONDS'] ?? 86400); // 1 día por defecto
+        $ttl = intval($_ENV['CACHE_TTL_DAYS'] ?? 7) * 86400;
 
         if ($record && $record->fecha_registro && (time() - strtotime($record->fecha_registro)) < $ttl) {
             // Construir respuesta desde cache
