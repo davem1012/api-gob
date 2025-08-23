@@ -30,6 +30,13 @@ class SunatController
             ], 401);
         }
 
+        if (!preg_match('/^\d{11}$/', $ruc)) {
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'RUC no válido, debe tener 11 digitos'
+            ], 400);
+        }
+
         // 2. Revisar cache
         $record = RucCache::where('numero_documento', $ruc)->first();
         $ttl = intval($_ENV['CACHE_TTL_DAYS'] ?? 7) * 86400;

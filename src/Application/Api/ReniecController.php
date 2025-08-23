@@ -27,6 +27,15 @@ class ReniecController
             ], 401);
         }
 
+        // Validar que el DNI tenga exactamente 8 dígitos numéricos
+        if (!preg_match('/^\d{8}$/', $dni)) {
+            return $this->json($response, [
+            'success' => false,
+            'message' => 'DNI no válido, debe tener 8 digitos'
+            ], 400);
+        }
+
+
         // 2. Revisar cache
         $record = DniCache::where('document_number', $dni)->first();
         $ttl = intval($_ENV['CACHE_TTL_DAYS'] ?? 7) * 86400;
