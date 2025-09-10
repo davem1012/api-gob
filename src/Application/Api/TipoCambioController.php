@@ -56,7 +56,7 @@ class TipoCambioController
 
         // 5. Consultar API externa de tipo de cambio
         $remoteResponse = $this->remoteQuery($date, $apiTokenRecord->token);
-        
+
         // 7. Incrementar contador del token usado
         $apiTokenRecord->incrementCounter();
 
@@ -161,6 +161,16 @@ class TipoCambioController
                     'error' => 'Fecha no válida o sin datos',
                     'message' => $errorData['error'] ?? 'Invalid request',
                     'status_code' => 400
+                ];
+            }
+            if ($e->hasResponse() && $e->getResponse()->getStatusCode() === 404) {
+                $body = (string) $e->getResponse()->getBody();
+                $errorData = json_decode($body, true);
+
+                return [
+                    'error' => 'Fecha no válida o sin datos',
+                    'message' => $errorData['error'] ?? 'Invalid request',
+                    'status_code' => 404
                 ];
             }
 
