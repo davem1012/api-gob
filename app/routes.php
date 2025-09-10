@@ -32,10 +32,10 @@ return function (App $app) {
     $app->get('/api/dni/{dni}', [ReniecController::class, 'lookup']);
 
     // Ruta para obtener tipo de cambio por fecha
-    $app->get('/tipo-cambio/{date}', [TipoCambioController::class, 'getTipoCambio']);
+    $app->get('/api/tipo-cambio/{date}', [TipoCambioController::class, 'getTipoCambio']);
 
     // Opcional: ruta sin fecha que use la fecha actual
-    $app->get('/tipo-cambio', function ($request, $response, $args) {
+    $app->get('/api/tipo-cambio', function ($request, $response, $args) {
         $args['date'] = date('Y-m-d');
         $controller = new TipoCambioController();
         return $controller->getTipoCambio($request, $response, $args);
