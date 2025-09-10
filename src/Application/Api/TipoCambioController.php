@@ -158,7 +158,7 @@ class TipoCambioController
 
                 return [
                     'error' => 'Fecha no válida o sin datos',
-                    'message' => $errorData['error'] ?? 'Invalid request',
+                    'message' => $errorData['message'] ?? $errorData['error'] ?? 'Invalid request',
                     'status_code' => $e->getResponse()->getStatusCode()
                 ];
             }
