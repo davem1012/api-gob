@@ -30,8 +30,8 @@ class ReniecController
         // Validar que el DNI tenga exactamente 8 dígitos numéricos
         if (!preg_match('/^\d{8}$/', $dni)) {
             return $this->json($response, [
-            'success' => false,
-            'message' => 'DNI no válido, debe tener 8 digitos'
+                'success' => false,
+                'message' => 'DNI no válido, debe tener 8 digitos'
             ], 400);
         }
 
@@ -58,6 +58,9 @@ class ReniecController
         // 4. Consultar API intermedia
         $remoteResponse = $this->remoteQuery($dni, $apiTokenRecord->token);
 
+        // 6. Incrementar contador del token usado
+        $apiTokenRecord->incrementCounter();
+
         // 5. Verificar si hay error en la respuesta del API
         if (isset($remoteResponse['error'])) {
             return $this->json($response, [
@@ -65,9 +68,6 @@ class ReniecController
                 'message' => $remoteResponse['message'] ?? $remoteResponse['error'] ?? 'Error desconocido'
             ]);
         }
-
-        // 6. Incrementar contador del token usado
-        $apiTokenRecord->incrementCounter();
 
         // 7. Guardar/actualizar cache
         if ($record) {

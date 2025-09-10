@@ -14,7 +14,7 @@ use Dotenv\Dotenv;
 require __DIR__ . '/../vendor/autoload.php';
 
 
-
+date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'America/Lima');
 // Instantiate PHP-DI ContainerBuilder
 $containerBuilder = new ContainerBuilder();
 

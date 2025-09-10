@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
 use Slim\Interfaces\RouteCollectorProxyInterface as Group;
 use App\Application\Api\SunatController;
+use App\Application\Api\TipoCambioController;
 
 return function (App $app) {
     $app->options('/{routes:.*}', function (Request $request, Response $response) {
@@ -29,4 +30,14 @@ return function (App $app) {
 
     $app->get('/api/ruc/{ruc}', [SunatController::class, 'lookup']);
     $app->get('/api/dni/{dni}', [ReniecController::class, 'lookup']);
+
+    // Ruta para obtener tipo de cambio por fecha
+    $app->get('/tipo-cambio/{date}', [TipoCambioController::class, 'getTipoCambio']);
+
+    // Opcional: ruta sin fecha que use la fecha actual
+    $app->get('/tipo-cambio', function ($request, $response, $args) {
+        $args['date'] = date('Y-m-d');
+        $controller = new TipoCambioController();
+        return $controller->getTipoCambio($request, $response, $args);
+    });
 };

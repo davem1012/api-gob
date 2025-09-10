@@ -58,6 +58,9 @@ class SunatController
 
         // 4. Consultar API intermedia
         $remoteResponse = $this->remoteQuery($ruc, $apiTokenRecord->token);
+        
+        // 6. Incrementar contador del token usado
+        $apiTokenRecord->incrementCounter();
 
         // 5. Verificar si hay error en la respuesta del API
         if (isset($remoteResponse['error']) || isset($remoteResponse['message'])) {
@@ -66,9 +69,6 @@ class SunatController
                 'message' => 'RUC no valido'
             ]);
         }
-
-        // 6. Incrementar contador del token usado
-        $apiTokenRecord->incrementCounter();
 
         // 7. Guardar/actualizar cache
         if ($record) {
