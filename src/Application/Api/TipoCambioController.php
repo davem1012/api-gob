@@ -152,25 +152,14 @@ class TipoCambioController
 
             return $data;
         } catch (RequestException $e) {
-            // Verificar si es un error 400 específicamente
-            if ($e->hasResponse() && $e->getResponse()->getStatusCode() === 400) {
+            if ($e->hasResponse()) {
                 $body = (string) $e->getResponse()->getBody();
                 $errorData = json_decode($body, true);
 
                 return [
                     'error' => 'Fecha no válida o sin datos',
                     'message' => $errorData['error'] ?? 'Invalid request',
-                    'status_code' => 400
-                ];
-            }
-            if ($e->hasResponse() && $e->getResponse()->getStatusCode() === 404) {
-                $body = (string) $e->getResponse()->getBody();
-                $errorData = json_decode($body, true);
-
-                return [
-                    'error' => 'Fecha no válida o sin datos',
-                    'message' => $errorData['error'] ?? 'Invalid request',
-                    'status_code' => 404
+                    'status_code' => $e->getResponse()->getStatusCode()
                 ];
             }
 
