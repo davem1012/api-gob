@@ -98,11 +98,14 @@ class TipoCambioController
     private function buildSuccessResponse(array $data): array
     {
         return [
-            'buy_price' => $data['buy_price'],
-            'sell_price' => $data['sell_price'],
-            'base_currency' => $data['base_currency'],
-            'quote_currency' => $data['quote_currency'],
-            'date' => $data['date']
+            'success' => true,
+            'data' => [
+                'buy_price' => $data['buy_price'],
+                'sell_price' => $data['sell_price'],
+                'base_currency' => $data['base_currency'],
+                'quote_currency' => $data['quote_currency'],
+                'date' => $data['date']
+            ]
         ];
     }
 
