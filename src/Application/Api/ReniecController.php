@@ -71,12 +71,16 @@ class ReniecController
 
         // 7. Guardar/actualizar cache
         if ($record) {
-            // Actualizar registro existente
+            // Actualizar registro existente. Al venir del API real, se marca/confirma
+            // como 'reniec' aunque el registro previo haya sido inferido del padrón
+            // de SUNAT (source='sunat_ruc'): esto "sana" esos registros heurísticos
+            // en cuanto alguien los consulta en vivo.
             $record->update([
                 'first_name' => $remoteResponse['first_name'],
                 'first_last_name' => $remoteResponse['first_last_name'],
                 'second_last_name' => $remoteResponse['second_last_name'],
                 'full_name' => $remoteResponse['full_name'],
+                'source' => 'reniec',
                 'document_number' => $remoteResponse['document_number'],
                 'fecha_registro' => date("Y-m-d H:i:s")
             ]);
@@ -87,6 +91,7 @@ class ReniecController
                 'first_last_name' => $remoteResponse['first_last_name'],
                 'second_last_name' => $remoteResponse['second_last_name'],
                 'full_name' => $remoteResponse['full_name'],
+                'source' => 'reniec',
                 'document_number' => $remoteResponse['document_number'],
                 'fecha_registro' => date("Y-m-d H:i:s")
             ]);

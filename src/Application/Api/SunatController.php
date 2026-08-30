@@ -37,16 +37,20 @@ class SunatController
             ], 400);
         }
 
-        // 2. Revisar cache
+        // 2. Revisar cache. La tabla se mantiene al día con el sync diario del
+        // padrón de SUNAT (bin/sync_ruc_padron.php), por lo que un registro
+        // existente no necesita expirar por TTL: si está, se sirve de aquí.
         $record = RucCache::where('numero_documento', $ruc)->first();
-        $ttl = intval($_ENV['CACHE_TTL_DAYS'] ?? 7) * 86400;
 
-        if ($record && $record->fecha_registro && (time() - strtotime($record->fecha_registro)) < $ttl) {
-            // Construir respuesta desde cache
+        if ($record) {
             return $this->json($response, $this->buildSuccessResponse($record->toArray()));
         }
 
-        // 3. Obtener token disponible
+        // 3. No está en cache (RUC no capturado aún por el padrón, p. ej. muy
+        // reciente): se usa el API externo únicamente como fallback de "no
+        // encontrado", nunca para completar campos de un registro ya existente.
+
+        // Obtener token disponible
         $apiTokenRecord = ApiToken::getAvailableToken();
 
         if (!$apiTokenRecord) {
@@ -70,61 +74,36 @@ class SunatController
             ]);
         }
 
-        // 7. Guardar/actualizar cache
-        if ($record) {
-            // Actualizar registro existente
-            $record->update([
-                'razon_social' => $remoteResponse['razon_social'],
-                'estado' => $remoteResponse['estado'],
-                'condicion' => $remoteResponse['condicion'],
-                'direccion' => $remoteResponse['direccion'],
-                'ubigeo' => $remoteResponse['ubigeo'],
-                'via_tipo' => $remoteResponse['via_tipo'] ?? null,
-                'via_nombre' => $remoteResponse['via_nombre'] ?? null,
-                'zona_codigo' => $remoteResponse['zona_codigo'] ?? null,
-                'zona_tipo' => $remoteResponse['zona_tipo'] ?? null,
-                'numero' => $remoteResponse['numero'] ?? null,
-                'interior' => $remoteResponse['interior'] ?? null,
-                'lote' => $remoteResponse['lote'] ?? null,
-                'dpto' => $remoteResponse['dpto'] ?? null,
-                'manzana' => $remoteResponse['manzana'] ?? null,
-                'kilometro' => $remoteResponse['kilometro'] ?? null,
-                'distrito' => $remoteResponse['distrito'],
-                'provincia' => $remoteResponse['provincia'],
-                'departamento' => $remoteResponse['departamento'],
-                'es_agente_retencion' => $remoteResponse['es_agente_retencion'] ?? false,
-                'es_buen_contribuyente' => $remoteResponse['es_buen_contribuyente'] ?? false,
-                'locales_anexos' => json_encode($remoteResponse['locales_anexos'] ?? []),
-                'fecha_registro' => date("Y-m-d H:i:s")
-            ]);
-        } else {
-            // Crear nuevo registro
-            RucCache::create([
-                'numero_documento' => $remoteResponse['numero_documento'],
-                'razon_social' => $remoteResponse['razon_social'],
-                'estado' => $remoteResponse['estado'],
-                'condicion' => $remoteResponse['condicion'],
-                'direccion' => $remoteResponse['direccion'],
-                'ubigeo' => $remoteResponse['ubigeo'],
-                'via_tipo' => $remoteResponse['via_tipo'] ?? null,
-                'via_nombre' => $remoteResponse['via_nombre'] ?? null,
-                'zona_codigo' => $remoteResponse['zona_codigo'] ?? null,
-                'zona_tipo' => $remoteResponse['zona_tipo'] ?? null,
-                'numero' => $remoteResponse['numero'] ?? null,
-                'interior' => $remoteResponse['interior'] ?? null,
-                'lote' => $remoteResponse['lote'] ?? null,
-                'dpto' => $remoteResponse['dpto'] ?? null,
-                'manzana' => $remoteResponse['manzana'] ?? null,
-                'kilometro' => $remoteResponse['kilometro'] ?? null,
-                'distrito' => $remoteResponse['distrito'],
-                'provincia' => $remoteResponse['provincia'],
-                'departamento' => $remoteResponse['departamento'],
-                'es_agente_retencion' => $remoteResponse['es_agente_retencion'] ?? false,
-                'es_buen_contribuyente' => $remoteResponse['es_buen_contribuyente'] ?? false,
-                'locales_anexos' => json_encode($remoteResponse['locales_anexos'] ?? []),
-                'fecha_registro' => date("Y-m-d H:i:s")
-            ]);
-        }
+        // 7. Guardar en cache. No había registro previo (si lo hubiera, ya se
+        // devolvió arriba), así que siempre es una creación. Los campos
+        // es_agente_retencion/es_buen_contribuyente/locales_anexos sí se
+        // guardan aquí porque vienen de este mismo llamado al API externo;
+        // el sync diario del padrón (bin/sync_ruc_padron.php) nunca los toca.
+        RucCache::create([
+            'numero_documento' => $remoteResponse['numero_documento'],
+            'razon_social' => $remoteResponse['razon_social'],
+            'estado' => $remoteResponse['estado'],
+            'condicion' => $remoteResponse['condicion'],
+            'direccion' => $remoteResponse['direccion'],
+            'ubigeo' => $remoteResponse['ubigeo'],
+            'via_tipo' => $remoteResponse['via_tipo'] ?? null,
+            'via_nombre' => $remoteResponse['via_nombre'] ?? null,
+            'zona_codigo' => $remoteResponse['zona_codigo'] ?? null,
+            'zona_tipo' => $remoteResponse['zona_tipo'] ?? null,
+            'numero' => $remoteResponse['numero'] ?? null,
+            'interior' => $remoteResponse['interior'] ?? null,
+            'lote' => $remoteResponse['lote'] ?? null,
+            'dpto' => $remoteResponse['dpto'] ?? null,
+            'manzana' => $remoteResponse['manzana'] ?? null,
+            'kilometro' => $remoteResponse['kilometro'] ?? null,
+            'distrito' => $remoteResponse['distrito'],
+            'provincia' => $remoteResponse['provincia'],
+            'departamento' => $remoteResponse['departamento'],
+            'es_agente_retencion' => $remoteResponse['es_agente_retencion'] ?? false,
+            'es_buen_contribuyente' => $remoteResponse['es_buen_contribuyente'] ?? false,
+            'locales_anexos' => json_encode($remoteResponse['locales_anexos'] ?? []),
+            'fecha_registro' => date("Y-m-d H:i:s")
+        ]);
 
         // 8. Devolver respuesta formateada
         return $this->json($response, $this->buildSuccessResponse($remoteResponse));

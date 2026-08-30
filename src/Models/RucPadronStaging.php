@@ -4,10 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class RucCache extends Model
+class RucPadronStaging extends Model
 {
     public $timestamps = false;
-    protected $table = 'ruc_cache';
+    protected $table = 'ruc_padron_staging';
+    protected $primaryKey = 'numero_documento';
+    public $incrementing = false;
+    protected $keyType = 'string';
     protected $fillable = [
         'numero_documento',
         'razon_social',
@@ -28,10 +31,6 @@ class RucCache extends Model
         'distrito',
         'provincia',
         'departamento',
-        'es_agente_retencion',
-        'es_buen_contribuyente',
-        'locales_anexos',
         'row_hash',
-        'fecha_registro'
     ];
 }

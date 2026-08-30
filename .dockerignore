@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+tests
+coverage
+.coveralls.yml
+phpcs.xml
+phpstan.neon.dist
+phpunit.xml
+README.md
+CONTRIBUTING.md

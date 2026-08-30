@@ -13,6 +13,7 @@ class DniCache extends Model
     'first_last_name',
     'second_last_name',
     'full_name',
+    'source',
     'document_number',
     'fecha_registro'
     ];

@@ -1,42 +1,83 @@
-# Slim Framework 4 Skeleton Application
+# API Gob
 
-[![Coverage Status](https://coveralls.io/repos/github/slimphp/Slim-Skeleton/badge.svg?branch=master)](https://coveralls.io/github/slimphp/Slim-Skeleton?branch=master)
+API en PHP (Slim Framework 4) que expone endpoints de consulta a servicios públicos peruanos y utilidades relacionadas:
 
-Use this skeleton application to quickly setup and start working on a new Slim Framework 4 application. This application uses the latest Slim 4 with Slim PSR-7 implementation and PHP-DI container implementation. It also uses the Monolog logger.
+- `GET /api/ruc/{ruc}` — consulta de RUC (SUNAT).
+- `GET /api/dni/{dni}` — consulta de DNI (RENIEC).
+- `GET /api/tipo-cambio/{date}` — tipo de cambio para una fecha (`YYYY-MM-DD`).
+- `GET /api/tipo-cambio` — tipo de cambio del día actual.
+- `GET /users` y `GET /users/{id}` — endpoints de ejemplo del skeleton original.
 
-This skeleton application was built for Composer. This makes setting up a new Slim Framework application quick and easy.
+## Stack
 
-## Install the Application
+- PHP 8.2 sobre [NGINX Unit](https://unit.nginx.org/) (`unit:php8.2`).
+- [Slim Framework 4](https://www.slimframework.com/) + PHP-DI.
+- [Illuminate Database (Eloquent)](https://laravel.com/docs/eloquent) sobre MySQL.
+- Autenticación por token simple vía `SessionMiddleware` (`AUTH_TOKEN` en `.env`).
 
-Run this command from the directory in which you want to install your new Slim Framework application. You will require PHP 7.4 or newer.
+## Requisitos
+
+- Docker y Docker Compose.
+- Puertos libres en el host: `8080` (API) y `3307` (MySQL).
+
+## Levantar el entorno local
+
+El proyecto incluye un `docker-compose.yml` que levanta la API (usando el mismo `Dockerfile` de producción) junto con una base de datos MySQL para desarrollo.
 
 ```bash
-composer create-project slim/slim-skeleton [my-app-name]
+docker compose up -d --build
 ```
 
-Replace `[my-app-name]` with the desired directory name for your new application. You'll want to:
+Esto levanta:
 
-* Point your virtual host document root to your new application's `public/` directory.
-* Ensure `logs/` is web writable.
+- **app**: la API, accesible en `http://localhost:8080`.
+- **mysql**: MySQL 8.0, accesible desde el host en `localhost:3307` (dentro de la red de Docker como `mysql:3306`).
 
-To run the application in development, you can run these commands 
+El código fuente se monta como volumen (`.:/var/www/html`), por lo que los cambios se reflejan sin reconstruir la imagen. Solo hace falta reconstruir (`docker compose up -d --build`) cuando cambian `Dockerfile` o `composer.json`/`composer.lock`.
+
+Para ver logs:
 
 ```bash
-cd [my-app-name]
-composer start
+docker compose logs -f app
 ```
 
-Or you can use `docker-compose` to run the app with `docker`, so you can run these commands:
+Para detener el entorno:
+
 ```bash
-cd [my-app-name]
-docker-compose up -d
+docker compose down
 ```
-After that, open `http://localhost:8080` in your browser.
 
-Run this command in the application directory to run the test suite
+Para detener y borrar también los datos de MySQL:
 
 ```bash
+docker compose down -v
+```
+
+### Variables de entorno
+
+La app lee configuración de `.env` (vía `vlucas/phpdotenv`). El `docker-compose.yml` sobrescribe las variables de conexión a base de datos para apuntar al contenedor `mysql` (host `mysql`, puerto `3306`, base `api_gob`, usuario/clave `root`/`root`), sin necesidad de tocar el `.env` versionado. El resto de variables (`AUTH_TOKEN`, `EXTERNAL_API_URL`, `CACHE_TTL_DAYS`, `APP_TIMEZONE`) se toman del `.env`.
+
+### Esquema de base de datos
+
+El repo solo versiona el SQL de `sql/2026_08_30_ruc_padron_sync.sql` (tablas `ubigeo` y `ruc_padron_staging`). Las tablas usadas por `TipoCambioCache` (`tipo_cambio_cache`) y `ApiToken` (`api_tokens`) no tienen migración incluida, así que en una base de datos nueva (como la de este `docker-compose`) los endpoints que las usan (p. ej. `/api/tipo-cambio`) fallarán con un error 500 de "tabla no existe" hasta crearlas manualmente.
+
+### Problemas de permisos (logs)
+
+Como el código se monta desde el host, si el proceso dentro del contenedor no puede escribir en `logs/` o `var/`, ajusta permisos localmente:
+
+```bash
+chmod -R 777 logs var
+```
+
+## Testing
+
+```bash
+composer install
 composer test
 ```
 
-That's it! Now go build something cool.
+(`phpunit`, según `phpunit.xml`).
+
+## Producción
+
+En producción se usa únicamente el `Dockerfile` (sin `docker-compose`), construyendo la imagen con el código y `vendor/` incluidos, servida por NGINX Unit en el puerto `8081`.
