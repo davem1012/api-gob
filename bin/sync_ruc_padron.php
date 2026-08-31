@@ -19,6 +19,13 @@
  *        sin sobrescribir registros que ya existan ahí.
  *
  * Uso: php bin/sync_ruc_padron.php
+ *      php bin/sync_ruc_padron.php --skip-ingest
+ *
+ * --skip-ingest: salta la descarga y la carga a ruc_padron_staging, y va directo al
+ * diff+DNI usando lo que ya esté en esa tabla. Pensado para uso puntual/manual (p. ej.
+ * si una corrida anterior ya dejó staging cargado y no quieres perder tiempo volviendo
+ * a descargar+cargar 18M filas). Ojo: si la corrida anterior murió a mitad de la carga,
+ * ruc_padron_staging puede estar incompleto respecto al padrón real.
  */
 
 declare(strict_types=1);
@@ -44,13 +51,21 @@ function to_utf8(string $str): string
         : mb_convert_encoding($str, 'UTF-8', 'Windows-1252');
 }
 
-function normalize(?string $value): ?string
+// $maxLength trunca defensivamente al ancho real de la columna destino: el padrón de
+// SUNAT es texto libre de un dataset de décadas, no hay garantía de que un campo
+// "corto" (numero, interior, lote, etc.) se mantenga corto en todas las filas. Sin
+// esto, una sola fila fuera de rango entre 18M tira todo el lote con un error de
+// MySQL (como pasó el 2026-08-31 con la columna `numero`).
+function normalize(?string $value, ?int $maxLength = null): ?string
 {
     if ($value === null) {
         return null;
     }
     $value = trim($value);
-    return ($value === '' || $value === '-') ? null : $value;
+    if ($value === '' || $value === '-') {
+        return null;
+    }
+    return $maxLength !== null ? mb_substr($value, 0, $maxLength) : $value;
 }
 
 function build_direccion(array $f): ?string
@@ -117,9 +132,13 @@ function row_hash(array $f): string
 
 // --- 1. Descargar y descomprimir ---------------------------------------
 
-$tmpDir = sys_get_temp_dir() . '/ruc_padron_' . date('Ymd_His');
-mkdir($tmpDir, 0755, true);
-$zipPath = $tmpDir . '/padron.zip';
+$skipIngest = in_array('--skip-ingest', $argv, true);
+
+$tmpDir = null;
+if (!$skipIngest) {
+    $tmpDir = sys_get_temp_dir() . '/ruc_padron_' . date('Ymd_His');
+    mkdir($tmpDir, 0755, true);
+}
 
 $lockHandle = fopen(__DIR__ . '/../var/sync_ruc_padron.lock', 'c');
 if (!flock($lockHandle, LOCK_EX | LOCK_NB)) {
@@ -128,101 +147,114 @@ if (!flock($lockHandle, LOCK_EX | LOCK_NB)) {
 }
 
 try {
-    log_line('Descargando padrón desde ' . PADRON_URL);
-    $client = new Client(['timeout' => 300]);
-    $client->get(PADRON_URL, ['sink' => $zipPath]);
-
-    log_line('Descomprimiendo...');
-    $zip = new ZipArchive();
-    if ($zip->open($zipPath) !== true) {
-        throw new RuntimeException('No se pudo abrir el zip descargado.');
-    }
-    $zip->extractTo($tmpDir);
-
-    $txtName = null;
-    for ($i = 0; $i < $zip->numFiles; $i++) {
-        $name = $zip->getNameIndex($i);
-        if (str_ends_with(strtolower($name), '.txt')) {
-            $txtName = $name;
-            break;
-        }
-    }
-    $zip->close();
-
-    if (!$txtName) {
-        throw new RuntimeException('El zip no contiene un .txt.');
-    }
-    $txtPath = $tmpDir . '/' . $txtName;
-
-    // --- 2. Cargar ubigeo en memoria (catálogo estático, ~1834 filas) ---
-
-    $ubigeoMap = DB::table('ubigeo')->get()->keyBy('codigo');
-
-    // --- 3. Bulk load a staging -----------------------------------------
-
-    log_line('Cargando padrón a ruc_padron_staging...');
-    DB::table('ruc_padron_staging')->truncate();
-
-    $handle = fopen($txtPath, 'r');
-    $header = fgets($handle); // descarta encabezado
-
-    $buffer = [];
     $totalLoaded = 0;
 
-    while (($line = fgets($handle)) !== false) {
-        $line = rtrim($line, "\r\n");
-        if ($line === '') {
-            continue;
+    if ($skipIngest) {
+        log_line('--skip-ingest: se omite la descarga y la carga a ruc_padron_staging.');
+        $totalLoaded = DB::table('ruc_padron_staging')->count();
+        log_line("Usando lo que ya hay en ruc_padron_staging: {$totalLoaded} filas.");
+    } else {
+        $zipPath = $tmpDir . '/padron.zip';
+
+        log_line('Descargando padrón desde ' . PADRON_URL);
+        $client = new Client(['timeout' => 300]);
+        $client->get(PADRON_URL, ['sink' => $zipPath]);
+
+        log_line('Descomprimiendo...');
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath) !== true) {
+            throw new RuntimeException('No se pudo abrir el zip descargado.');
+        }
+        $zip->extractTo($tmpDir);
+
+        $txtName = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (str_ends_with(strtolower($name), '.txt')) {
+                $txtName = $name;
+                break;
+            }
+        }
+        $zip->close();
+
+        if (!$txtName) {
+            throw new RuntimeException('El zip no contiene un .txt.');
+        }
+        $txtPath = $tmpDir . '/' . $txtName;
+
+        // --- 2. Cargar ubigeo en memoria (catálogo estático, ~1834 filas) ---
+
+        $ubigeoMap = DB::table('ubigeo')->get()->keyBy('codigo');
+
+        // --- 3. Bulk load a staging -----------------------------------------
+
+        log_line('Cargando padrón a ruc_padron_staging...');
+        DB::table('ruc_padron_staging')->truncate();
+
+        $handle = fopen($txtPath, 'r');
+        $header = fgets($handle); // descarta encabezado
+
+        $buffer = [];
+
+        while (($line = fgets($handle)) !== false) {
+            $line = rtrim($line, "\r\n");
+            if ($line === '') {
+                continue;
+            }
+
+            $cols = explode('|', to_utf8($line));
+
+            $f = [
+                'numero_documento' => normalize($cols[0] ?? null, 11),
+                'razon_social'     => normalize($cols[1] ?? null),
+                'estado'           => normalize($cols[2] ?? null, 50),
+                'condicion'        => normalize($cols[3] ?? null, 50),
+                'ubigeo'           => normalize($cols[4] ?? null, 10),
+                'via_tipo'         => normalize($cols[5] ?? null, 255),
+                'via_nombre'       => normalize($cols[6] ?? null, 255),
+                'zona_codigo'      => normalize($cols[7] ?? null, 255),
+                'zona_tipo'        => normalize($cols[8] ?? null, 255),
+                'numero'           => normalize($cols[9] ?? null, 255),
+                'interior'         => normalize($cols[10] ?? null, 255),
+                'lote'             => normalize($cols[11] ?? null, 255),
+                'dpto'             => normalize($cols[12] ?? null, 255),
+                'manzana'          => normalize($cols[13] ?? null, 255),
+                'kilometro'        => normalize($cols[14] ?? null, 255),
+            ];
+
+            if (!$f['numero_documento']) {
+                continue;
+            }
+
+            $geo = $f['ubigeo'] ? $ubigeoMap->get($f['ubigeo']) : null;
+
+            $buffer[] = $f + [
+                'direccion'    => build_direccion($f),
+                'distrito'     => $geo->distrito ?? null,
+                'provincia'    => $geo->provincia ?? null,
+                'departamento' => $geo->departamento ?? null,
+                'row_hash'     => row_hash($f),
+            ];
+
+            if (count($buffer) >= STAGING_CHUNK) {
+                DB::table('ruc_padron_staging')->insert($buffer);
+                $totalLoaded += count($buffer);
+                $buffer = [];
+
+                if ($totalLoaded % 500000 < STAGING_CHUNK) {
+                    log_line("  ... {$totalLoaded} filas cargadas a staging");
+                }
+            }
         }
 
-        $cols = explode('|', to_utf8($line));
-
-        $f = [
-            'numero_documento' => normalize($cols[0] ?? null),
-            'razon_social'     => normalize($cols[1] ?? null),
-            'estado'           => normalize($cols[2] ?? null),
-            'condicion'        => normalize($cols[3] ?? null),
-            'ubigeo'           => normalize($cols[4] ?? null),
-            'via_tipo'         => normalize($cols[5] ?? null),
-            'via_nombre'       => normalize($cols[6] ?? null),
-            'zona_codigo'      => normalize($cols[7] ?? null),
-            'zona_tipo'        => normalize($cols[8] ?? null),
-            'numero'           => normalize($cols[9] ?? null),
-            'interior'         => normalize($cols[10] ?? null),
-            'lote'             => normalize($cols[11] ?? null),
-            'dpto'             => normalize($cols[12] ?? null),
-            'manzana'          => normalize($cols[13] ?? null),
-            'kilometro'        => normalize($cols[14] ?? null),
-        ];
-
-        if (!$f['numero_documento']) {
-            continue;
-        }
-
-        $geo = $f['ubigeo'] ? $ubigeoMap->get($f['ubigeo']) : null;
-
-        $buffer[] = $f + [
-            'direccion'    => build_direccion($f),
-            'distrito'     => $geo->distrito ?? null,
-            'provincia'    => $geo->provincia ?? null,
-            'departamento' => $geo->departamento ?? null,
-            'row_hash'     => row_hash($f),
-        ];
-
-        if (count($buffer) >= STAGING_CHUNK) {
+        if (!empty($buffer)) {
             DB::table('ruc_padron_staging')->insert($buffer);
             $totalLoaded += count($buffer);
-            $buffer = [];
         }
-    }
+        fclose($handle);
 
-    if (!empty($buffer)) {
-        DB::table('ruc_padron_staging')->insert($buffer);
-        $totalLoaded += count($buffer);
+        log_line("Staging cargado: {$totalLoaded} filas.");
     }
-    fclose($handle);
-
-    log_line("Staging cargado: {$totalLoaded} filas.");
 
     // --- 4. Una sola pasada: diff hacia ruc_cache + derivar DNI hacia dni_cache ---
 
@@ -330,11 +362,20 @@ try {
 
     log_line("Listo. ruc_cache -> nuevos: {$inserted}, actualizados: {$updated}, sin cambios: " . ($totalLoaded - $inserted - $updated) . '.');
     log_line("dni_cache -> {$dniInserted} nuevos derivados del padrón (los ya existentes no se tocan).");
+} catch (\Throwable $e) {
+    // display_errors está apagado en el contenedor (correcto para el API HTTP), así que
+    // sin esto un fallo aquí solo queda en logs/php_errors.log y el scheduler no muestra
+    // nada útil. Lo dejamos explícito en stdout y relanzamos para que el scheduler siga
+    // marcando la corrida como fallida.
+    log_line('ERROR: ' . get_class($e) . ': ' . $e->getMessage());
+    throw $e;
 } finally {
     flock($lockHandle, LOCK_UN);
     fclose($lockHandle);
 
-    // limpieza de temporales
-    array_map('unlink', glob("$tmpDir/*"));
-    @rmdir($tmpDir);
+    // limpieza de temporales (no hay nada que limpiar en modo --skip-ingest)
+    if ($tmpDir !== null) {
+        array_map('unlink', glob("$tmpDir/*"));
+        @rmdir($tmpDir);
+    }
 }
